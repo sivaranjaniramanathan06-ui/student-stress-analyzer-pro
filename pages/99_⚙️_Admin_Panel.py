@@ -76,7 +76,7 @@ admin_password = st.text_input(
     type="password"
 )
 
-correct_password = "admin123"
+correct_password = "ranjani07"
 
 if admin_password == correct_password:
 
