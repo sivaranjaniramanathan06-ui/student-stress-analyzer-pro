@@ -29,9 +29,12 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-.stApp{
-    background:#D5D8DC;
-    color:#0F172A;
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.main,
+.block-container {
+    background-color: #EAF4FF !important;
 }
 
 [data-testid="stSidebar"],

@@ -20,10 +20,14 @@ st.markdown("""
 
 /* Main App */
 
-.stApp{
-    background:#D5D8DC;
-    color:#0F172A;
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.main,
+.block-container {
+    background-color: #EAF4FF !important;
 }
+
 
 /* Headings */
 
