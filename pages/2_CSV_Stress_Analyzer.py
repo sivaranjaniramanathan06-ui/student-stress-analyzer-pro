@@ -5,8 +5,6 @@ import plotly.graph_objects as go
 import sqlite3
 from datetime import datetime
 import pytz
-import tempfile
-
 from io import BytesIO
 
 from reportlab.platypus import (
@@ -14,10 +12,8 @@ from reportlab.platypus import (
     Paragraph,
     Spacer,
     Table,
-    TableStyle,
-    Image
+    TableStyle
 )
-
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import landscape, A4
@@ -29,13 +25,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# =========================
-# CUSTOM STYLING
-# =========================
-
 st.markdown("""
 <style>
-
 .stApp {
     background: #D5D8DC;
     color: #0F172A;
@@ -63,14 +54,7 @@ div[data-testid="stMetric"] {
     border-left: 5px solid #0F172A;
 }
 
-div.stButton > button {
-    background-color: #0F172A !important;
-    color: white !important;
-    border-radius: 10px !important;
-    border: none !important;
-    font-weight: 700 !important;
-}
-
+div.stButton > button,
 div.stDownloadButton > button {
     background-color: #0F172A !important;
     color: white !important;
@@ -102,13 +86,8 @@ div.stDownloadButton > button {
     text-align: center !important;
     font-weight: 500 !important;
 }
-
 </style>
 """, unsafe_allow_html=True)
-
-# =========================
-# DATABASE CONNECTION
-# =========================
 
 conn = sqlite3.connect(
     "student_stress.db",
@@ -137,31 +116,16 @@ CREATE TABLE IF NOT EXISTS stress_data (
 
 conn.commit()
 
-# =========================
-# TITLE
-# =========================
-
 st.title("📊 CSV Student Stress Analysis Dashboard")
 
-st.write(
-    "Upload a CSV file to analyze overall student stress patterns."
-)
-
-# =========================
-# FILE UPLOAD
-# =========================
+st.write("Upload a CSV file to analyze overall student stress patterns.")
 
 uploaded_file = st.file_uploader(
     "Upload CSV File",
     type=["csv"]
 )
 
-# =========================
-# STRESS FUNCTIONS
-# =========================
-
 def calculate_stress(row):
-
     score = 0
 
     if row["StudyHours"] > 8:
@@ -178,64 +142,172 @@ def calculate_stress(row):
 
     return min(score, 100)
 
-def stress_level(score):
 
+def stress_level(score):
     if score >= 70:
         return "High"
-
     elif score >= 40:
         return "Medium"
-
     else:
         return "Low"
 
+
 def recommendation(level):
-
     if level == "High":
-
         return "Improve sleep, reduce screen time, exercise daily."
-
     elif level == "Medium":
-
         return "Maintain balance and practice relaxation."
-
     else:
-
         return "Healthy lifestyle maintained."
 
+
 def style_graph(fig):
-
     fig.update_layout(
-
         plot_bgcolor="#F8FAFC",
         paper_bgcolor="#F8FAFC",
-
         font=dict(color="black"),
-
         title_font=dict(color="black"),
-
         legend_font=dict(color="black"),
-
         xaxis=dict(
             showgrid=True,
             gridcolor="black",
             linecolor="black",
-            tickfont=dict(color="black")
+            tickfont=dict(color="black"),
+            title_font=dict(color="black")
         ),
-
         yaxis=dict(
             showgrid=True,
             gridcolor="black",
             linecolor="black",
-            tickfont=dict(color="black")
+            tickfont=dict(color="black"),
+            title_font=dict(color="black")
+        )
+    )
+    return fig
+
+
+def create_pdf_report(filtered_data, high_stress):
+    pdf_buffer = BytesIO()
+
+    pdf = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A4),
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=20,
+        bottomMargin=20
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(
+        Paragraph(
+            "Student Stress Analysed Report",
+            styles["Title"]
         )
     )
 
-    return fig
+    elements.append(Spacer(1, 18))
 
-# =========================
-# CSV PROCESS
-# =========================
+    metrics_text = f"""
+    <b>Total Students:</b> {len(filtered_data)}
+    <br/><br/>
+    <b>Average Stress Score:</b> {round(filtered_data["StressScore"].mean(), 1)}
+    <br/><br/>
+    <b>High Stress Students:</b> {len(high_stress)}
+    <br/><br/>
+    <b>Average Sleep Hours:</b> {round(filtered_data["SleepHours"].mean(), 1)}
+    """
+
+    elements.append(
+        Paragraph(
+            metrics_text,
+            styles["BodyText"]
+        )
+    )
+
+    elements.append(Spacer(1, 18))
+
+    elements.append(
+        Paragraph(
+            "Student Dataset",
+            styles["Heading2"]
+        )
+    )
+
+    pdf_table_data = filtered_data.drop(
+        columns=["DisplayScore"]
+    )
+
+    table_data = [
+        pdf_table_data.columns.tolist()
+    ] + pdf_table_data.astype(str).values.tolist()
+
+    report_table = Table(
+        table_data,
+        repeatRows=1
+    )
+
+    report_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 6),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+
+    elements.append(report_table)
+    elements.append(Spacer(1, 18))
+
+    elements.append(
+        Paragraph(
+            "High Stress Students",
+            styles["Heading2"]
+        )
+    )
+
+    if len(high_stress) > 0:
+        high_table_data = high_stress.drop(
+            columns=["DisplayScore"]
+        )
+
+        high_pdf_data = [
+            high_table_data.columns.tolist()
+        ] + high_table_data.astype(str).values.tolist()
+
+        high_table = Table(
+            high_pdf_data,
+            repeatRows=1
+        )
+
+        high_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 6),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+
+        elements.append(high_table)
+
+    else:
+        elements.append(
+            Paragraph(
+                "No high stress students detected.",
+                styles["BodyText"]
+            )
+        )
+
+    pdf.build(elements)
+    pdf_buffer.seek(0)
+
+    return pdf_buffer
+
 
 if uploaded_file is not None:
 
@@ -253,9 +325,7 @@ if uploaded_file is not None:
     ]
 
     missing = [
-
         col for col in required_columns
-
         if col not in data.columns
     ]
 
@@ -264,10 +334,6 @@ if uploaded_file is not None:
         st.error(f"Missing columns: {missing}")
 
     else:
-
-        # =========================
-        # ANALYSIS
-        # =========================
 
         data["StressScore"] = data.apply(
             calculate_stress,
@@ -284,27 +350,19 @@ if uploaded_file is not None:
 
         data["DisplayScore"] = data["StressScore"].replace(0, 3)
 
-        st.success(
-            "✅ CSV uploaded and analyzed successfully."
-        )
-
-        # =========================
-        # FILTER & SORT
-        # =========================
+        st.success("✅ CSV uploaded and analyzed successfully.")
 
         st.subheader("🔍 Filter & Sort Students")
 
         f1, f2 = st.columns(2)
 
         with f1:
-
             selected_level = st.selectbox(
                 "Filter by Stress Level",
                 ["All", "High", "Medium", "Low"]
             )
 
         with f2:
-
             sort_option = st.selectbox(
                 "Sort by Stress Score",
                 [
@@ -316,28 +374,20 @@ if uploaded_file is not None:
         filtered_data = data.copy()
 
         if selected_level != "All":
-
             filtered_data = filtered_data[
                 filtered_data["StressLevel"] == selected_level
             ]
 
         if sort_option == "Highest to Lowest":
-
             filtered_data = filtered_data.sort_values(
                 by="StressScore",
                 ascending=False
             )
-
         else:
-
             filtered_data = filtered_data.sort_values(
                 by="StressScore",
                 ascending=True
             )
-
-        # =========================
-        # SAVE CSV
-        # =========================
 
         save_csv = st.button(
             "💾 Save CSV Records to Student Stress Records"
@@ -384,13 +434,7 @@ if uploaded_file is not None:
 
             conn.commit()
 
-            st.success(
-                "✅ CSV records saved successfully."
-            )
-
-        # =========================
-        # METRICS
-        # =========================
+            st.success("✅ CSV records saved successfully.")
 
         st.subheader("📌 Dashboard Metrics")
 
@@ -408,21 +452,13 @@ if uploaded_file is not None:
 
         c3.metric(
             "High Stress Count",
-            len(
-                filtered_data[
-                    filtered_data["StressLevel"] == "High"
-                ]
-            )
+            len(filtered_data[filtered_data["StressLevel"] == "High"])
         )
 
         c4.metric(
             "Average Sleep",
             round(filtered_data["SleepHours"].mean(), 1)
         )
-
-        # =========================
-        # DATASET
-        # =========================
 
         st.subheader("📄 Student Dataset")
 
@@ -433,54 +469,36 @@ if uploaded_file is not None:
         st.markdown(
             f"""
             <div class="custom-table">
-            {dataset_html}
+                {dataset_html}
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # =========================
-        # GAUGE
-        # =========================
-
         st.subheader("🎯 Average Stress Meter")
 
-        avg_stress = filtered_data[
-            "StressScore"
-        ].mean()
+        avg_stress = filtered_data["StressScore"].mean()
 
         gauge = go.Figure(go.Indicator(
-
             mode="gauge+number",
-
             value=avg_stress,
-
-            title={
-                "text": "Average Stress Score"
-            },
-
+            title={"text": "Average Stress Score"},
             gauge={
-
                 "axis": {
                     "range": [0, 100]
                 },
-
                 "bar": {
                     "color": "#0F172A"
                 },
-
                 "steps": [
-
                     {
                         "range": [0, 40],
                         "color": "#10B981"
                     },
-
                     {
                         "range": [40, 70],
                         "color": "#FB923C"
                     },
-
                     {
                         "range": [70, 100],
                         "color": "#EF4444"
@@ -499,10 +517,6 @@ if uploaded_file is not None:
             use_container_width=True
         )
 
-        # =========================
-        # CHARTS
-        # =========================
-
         st.subheader("📊 Student Wellness Insights")
 
         chart1, chart2 = st.columns(2)
@@ -510,19 +524,12 @@ if uploaded_file is not None:
         with chart1:
 
             bar_chart = px.bar(
-
                 filtered_data,
-
                 x="Student",
-
                 y="DisplayScore",
-
                 text="StressScore",
-
                 color="StressLevel",
-
                 title="Student Stress Scores",
-
                 color_discrete_map={
                     "Low": "#10B981",
                     "Medium": "#FB923C",
@@ -534,9 +541,7 @@ if uploaded_file is not None:
                 textposition="outside"
             )
 
-            bar_chart = style_graph(
-                bar_chart
-            )
+            bar_chart = style_graph(bar_chart)
 
             st.plotly_chart(
                 bar_chart,
@@ -546,15 +551,10 @@ if uploaded_file is not None:
         with chart2:
 
             pie_chart = px.pie(
-
                 filtered_data,
-
                 names="StressLevel",
-
                 title="Stress Level Distribution",
-
                 color="StressLevel",
-
                 color_discrete_map={
                     "Low": "#10B981",
                     "Medium": "#FB923C",
@@ -572,42 +572,27 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-        # =========================
-        # LIFESTYLE GRAPH
-        # =========================
-
         st.subheader("📈 Student Lifestyle Comparison")
 
         comparison_chart = px.line(
-
             filtered_data,
-
             x="Student",
-
             y=[
                 "StudyHours",
                 "SleepHours",
                 "ScreenTime",
                 "ExerciseHours"
             ],
-
             markers=True,
-
             title="Student Lifestyle Comparison"
         )
 
-        comparison_chart = style_graph(
-            comparison_chart
-        )
+        comparison_chart = style_graph(comparison_chart)
 
         st.plotly_chart(
             comparison_chart,
             use_container_width=True
         )
-
-        # =========================
-        # HIGH STRESS
-        # =========================
 
         st.subheader("🚨 High Stress Alerts")
 
@@ -621,14 +606,14 @@ if uploaded_file is not None:
                 f"{len(high_stress)} high stress students detected."
             )
 
+            high_stress_html = high_stress.drop(
+                columns=["DisplayScore"]
+            ).to_html(index=False)
+
             st.markdown(
                 f"""
                 <div class="custom-table">
-                {
-                    high_stress.drop(
-                        columns=["DisplayScore"]
-                    ).to_html(index=False)
-                }
+                    {high_stress_html}
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -636,160 +621,12 @@ if uploaded_file is not None:
 
         else:
 
-            st.success(
-                "✅ No high stress students detected."
-            )
+            st.success("✅ No high stress students detected.")
 
-        # =========================
-        # PDF REPORT
-        # =========================
-
-        bar_temp = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png"
+        pdf_buffer = create_pdf_report(
+            filtered_data,
+            high_stress
         )
-
-        pie_temp = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png"
-        )
-
-        line_temp = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png"
-        )
-
-        gauge_temp = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png"
-        )
-
-        bar_chart.write_image(bar_temp.name)
-        pie_chart.write_image(pie_temp.name)
-        comparison_chart.write_image(line_temp.name)
-        gauge.write_image(gauge_temp.name)
-
-        pdf_buffer = BytesIO()
-
-        pdf = SimpleDocTemplate(
-            pdf_buffer,
-            pagesize=landscape(A4),
-            rightMargin=20,
-            leftMargin=20,
-            topMargin=20,
-            bottomMargin=20
-        )
-
-        styles = getSampleStyleSheet()
-
-        elements = []
-
-        elements.append(
-            Paragraph(
-                "Student Stress Analysed Report",
-                styles["Title"]
-            )
-        )
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        metrics_text = f"""
-        <b>Total Students:</b> {len(filtered_data)}
-        <br/><br/>
-        <b>Average Stress:</b> {round(filtered_data["StressScore"].mean(), 1)}
-        <br/><br/>
-        <b>High Stress Count:</b> {len(high_stress)}
-        <br/><br/>
-        <b>Average Sleep:</b> {round(filtered_data["SleepHours"].mean(), 1)}
-        """
-
-        elements.append(
-            Paragraph(
-                metrics_text,
-                styles["BodyText"]
-            )
-        )
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        table_data = [
-            filtered_data.drop(
-                columns=["DisplayScore"]
-            ).columns.tolist()
-        ]
-
-        table_data += filtered_data.drop(
-            columns=["DisplayScore"]
-        ).astype(str).values.tolist()
-
-        report_table = Table(table_data)
-
-        report_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-            ("GRID", (0, 0), (-1, -1), 1, colors.black),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ]))
-
-        elements.append(report_table)
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        elements.append(
-            Image(
-                gauge_temp.name,
-                width=500,
-                height=250
-            )
-        )
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        elements.append(
-            Image(
-                bar_temp.name,
-                width=550,
-                height=320
-            )
-        )
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        elements.append(
-            Image(
-                pie_temp.name,
-                width=450,
-                height=320
-            )
-        )
-
-        elements.append(
-            Spacer(1, 20)
-        )
-
-        elements.append(
-            Image(
-                line_temp.name,
-                width=550,
-                height=320
-            )
-        )
-
-        pdf.build(elements)
-
-        pdf_buffer.seek(0)
 
         st.download_button(
             label="📥 Download Complete Stress Analysed Report PDF",
@@ -800,6 +637,4 @@ if uploaded_file is not None:
 
 else:
 
-    st.info(
-        "📂 Upload a CSV file to start analysis."
-    )
+    st.info("📂 Upload a CSV file to start analysis.")
